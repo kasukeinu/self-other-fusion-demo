@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Fusion Demo</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: manipulation; }
+  #stage { position: fixed; inset: 0; }
+  #stage video, #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+                 transform-origin: center; }
+  #panel { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+           background: rgba(20,20,20,.85); color: #eee; font: 14px/1.4 -apple-system, sans-serif; }
+  #panel.hidden { display: none; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  button, select, input[type=file] { font-size: 14px; }
+  button { padding: 6px 10px; border-radius: 6px; border: 1px solid #666; background: #333; color: #eee; }
+  button.on { background: #2a6; border-color: #2a6; }
+  label { white-space: nowrap; }
+  input[type=range] { flex: 1; min-width: 120px; }
+  #status { color: #aaa; font-size: 12px; }
+  #uiToggle { position: fixed; top: calc(8px + env(safe-area-inset-top)); right: 8px; z-index: 10;
+              padding: 6px 10px; border-radius: 16px; background: rgba(20,20,20,.6);
+              border: 1px solid rgba(255,255,255,.3); color: #eee; font-size: 13px; }
+  #uiToggle.dim { opacity: .25; }
+  #recDot { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 12px; z-index: 10;
+            width: 10px; height: 10px; border-radius: 50%; background: #e33; display: none; }
+  #recDot.on { display: block; }
+  #help { position: fixed; inset: 0; z-index: 20; display: none; overflow-y: auto;
+          background: rgba(0,0,0,.92); color: #eee; font: 14px/1.6 -apple-system, sans-serif;
+          padding: calc(16px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom)); }
+  #help.show { display: block; }
+  #help h2 { font-size: 17px; margin: 0 0 8px; }
+  #help h3 { font-size: 15px; margin: 18px 0 4px; color: #8cf; }
+  #help ol, #help ul { margin: 4px 0; padding-left: 1.3em; }
+  #help b { color: #fff; }
+  #helpClose { position: sticky; top: 0; float: right; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="other" playsinline muted loop></video>
+  <canvas id="delayed"></canvas>
+  <video id="self" playsinline muted autoplay></video>
+</div>
+
+<button id="uiToggle">UI OFF</button>
+<div id="recDot"></div>
+
+<div id="help">
+  <button id="helpClose">閉じる</button>
+  <h2>自他融合デモの使い方</h2>
+
+  <h3>準備</h3>
+  <ol>
+    <li><b>カメラ開始</b>を押し、カメラを許可する</li>
+    <li>カメラ一覧から使うカメラを選ぶ（スマホは超広角があればそれを選ぶ）</li>
+    <li><b>倍率・回転・左右反転・上下反転</b>で、映像の手が実際の手と同じ大きさ・向きになるように合わせる</li>
+    <li>比較用の他者映像を用意する（下の「他者映像」を参照）</li>
+    <li>右上の<b>UI OFF</b>でパネルを隠して体験を始める</li>
+  </ol>
+
+  <h3>表示モード</h3>
+  <ul>
+    <li><b>自己</b>：ライブ映像だけを表示</li>
+    <li><b>他者</b>：比較対象だけを表示</li>
+    <li><b>交互</b>：ライブ映像と比較対象を周期的に切り替える</li>
+    <li><b>周期</b>：1回の切替の長さ（0.25〜4 s）</li>
+    <li><b>自己比率</b>：1周期のうち自己映像を出す割合</li>
+  </ul>
+
+  <h3>比較対象</h3>
+  <ul>
+    <li><b>比較対象: 録画</b>：録画した、または読み込んだ他者の手の映像</li>
+    <li><b>比較対象: 遅延自己</b>：数フレーム前の自分の手。<b>遅延</b>スライダで1〜60フレームを選ぶ（ms表示はfpsからの換算）</li>
+  </ul>
+
+  <h3>他者映像</h3>
+  <ul>
+    <li><b>他者を録画</b>：同じカメラで他者の手を撮る。もう一度押すと停止し、すぐ比較対象になる</li>
+    <li><b>録画を保存</b>：最後の録画をファイルに保存（Macはダウンロードフォルダ、iPhoneは「ファイル」アプリ）。保存しないと再読み込みで消える</li>
+    <li><b>ファイル選択</b>：保存した動画を読み込む</li>
+  </ul>
+
+  <h3>体験の記録</h3>
+  <ul>
+    <li><b>体験を記録</b>：画面に出ている映像（自己・比較対象の切替後、反転・倍率込み）を録画する。記録中は左上に赤い点が出る</li>
+    <li>もう一度押すと停止し、<b>動画</b>と<b>切替ログ（CSV）</b>の2ファイルを保存する</li>
+    <li><b>切替マーカー</b>：録画の左上に小さな四角を入れる（白＝自己、黒＝比較対象）。後でフレーム単位で切替を確認するため。画面には出ない</li>
+    <li>記録はメモリに貯めるので、長時間（数分以上）続けると重くなる</li>
+  </ul>
+
+  <h3>体験の進め方（例）</h3>
+  <ol>
+    <li>白手袋をはめ、<b>自己</b>で映像と手が一致していることを確認</li>
+    <li><b>クリック音</b>をONにし、音に合わせて指を開閉してもらう</li>
+    <li><b>交互</b>で遅い周期から始め、だんだん速くする</li>
+    <li><b>他者</b>で違いを確認する</li>
+  </ol>
+
+  <h3>注意</h3>
+  <ul>
+    <li>カメラはHTTPSか localhost でしか使えない</li>
+    <li>iPhoneで全画面にするには「ホーム画面に追加」から起動する</li>
+    <li>切替は画面更新（約16 ms）単位。デモ用で、実験には使わない</li>
+  </ul>
+</div>
+
+<div id="panel">
+  <div class="row">
+    <button id="start">カメラ開始</button>
+    <select id="camSel"></select>
+    <button id="helpBtn">使い方</button>
+  </div>
+  <div class="row">
+    <button id="mSelf">自己</button>
+    <button id="mOther">他者</button>
+    <button id="mAlt" class="on">交互</button>
+    <button id="rec">他者を録画</button>
+    <button id="save">録画を保存</button>
+  </div>
+  <div class="row">
+    <button id="expRec">体験を記録</button>
+    <label><input type="checkbox" id="marker" checked> 映像に切替マーカーを入れる</label>
+    <input type="file" id="file" accept="video/*">
+  </div>
+  <div class="row"><label>周期 <span id="pV"></span> s</label><input id="period" type="range" min="0.25" max="4" step="0.05" value="1"></div>
+  <div class="row"><label>自己比率 <span id="rV"></span></label><input id="ratio" type="range" min="0.2" max="0.8" step="0.05" value="0.5"></div>
+  <div class="row"><label>倍率 <span id="zV"></span></label><input id="zoom" type="range" min="0.5" max="3" step="0.01" value="1"></div>
+  <div class="row">
+    <button id="rot">回転 0°</button>
+    <button id="flipH">左右反転</button>
+    <button id="flipV">上下反転</button>
+  </div>
+  <div class="row">
+    <button id="src">比較対象: 録画</button>
+    <label>遅延 <span id="dV"></span> フレーム（約<span id="dMs"></span> ms）</label>
+    <input id="delay" type="range" min="1" max="60" step="1" value="10">
+  </div>
+  <div class="row">
+    <button id="click">クリック音 OFF</button>
+    <label>テンポ <span id="bV"></span> BPM</label><input id="bpm" type="range" min="30" max="120" step="1" value="60">
+  </div>
+  <div id="status">右上のボタンでパネルの表示／非表示</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const vSelf = $('self'), vOther = $('other'), panel = $('panel');
+let stream = null, mode = 'alt', rot = 0, t0 = performance.now();
+let recorder = null, chunks = [];
+let audioCtx = null, clickOn = false, nextBeat = 0;
+let flipH = false, flipV = false, src = 'rec';   // src: 'rec' = 録画, 'delay' = 遅延自己
+let lastRec = null;                              // 最後に録画した動画（Blob）
+
+// ---- 遅延自己映像：カメラのフレームを縮小してリングバッファに貯める ----
+const cDelay = $('delayed'), ctxDelay = cDelay.getContext('2d');
+const BUF_W = 640, MAX_DELAY = 60, RING = MAX_DELAY + 1;
+const ring = [];
+let head = 0, filled = 0, camFps = 30;
+
+function captureFrame() {
+  if (vSelf.videoWidth) {
+    const h = Math.round(BUF_W * vSelf.videoHeight / vSelf.videoWidth);
+    if (cDelay.width !== BUF_W || cDelay.height !== h) {   // 解像度が変わったらバッファを作り直す
+      cDelay.width = BUF_W; cDelay.height = h;
+      ring.length = 0; head = 0; filled = 0;
+    }
+    if (!ring[head]) { const c = document.createElement('canvas'); c.width = BUF_W; c.height = h; ring[head] = c; }
+    ring[head].getContext('2d').drawImage(vSelf, 0, 0, BUF_W, h);
+    head = (head + 1) % RING;
+    filled = Math.min(filled + 1, RING);
+    const d = +$('delay').value;
+    if (filled > d) ctxDelay.drawImage(ring[(head - 1 - d + RING) % RING], 0, 0);
+  }
+  // カメラの新しいフレームごとに呼ぶ（非対応ブラウザでは画面更新ごと）
+  if (vSelf.requestVideoFrameCallback) vSelf.requestVideoFrameCallback(captureFrame);
+  else requestAnimationFrame(captureFrame);
+}
+
+// ---- カメラ ----
+async function startCam(deviceId) {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  const video = deviceId
+    ? { deviceId: { exact: deviceId }, width: 1280, height: 720, frameRate: { ideal: 60 } }
+    : { facingMode: 'environment', width: 1280, height: 720, frameRate: { ideal: 60 } };
+  stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+  vSelf.srcObject = stream;
+  await vSelf.play();
+  const s = stream.getVideoTracks()[0].getSettings();
+  camFps = s.frameRate || 30; applyView();
+  $('status').textContent = `カメラ: ${stream.getVideoTracks()[0].label}  ${s.width}x${s.height} @ ${s.frameRate ?? '?'} fps`;
+}
+
+async function listCams() {
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+  const cur = stream?.getVideoTracks()[0].getSettings().deviceId;
+  $('camSel').innerHTML = devs.map(d =>
+    `<option value="${d.deviceId}" ${d.deviceId === cur ? 'selected' : ''}>${d.label || d.deviceId.slice(0, 8)}</option>`).join('');
+}
+
+$('start').onclick = async () => {
+  await startCam();
+  await listCams();           // ラベルは許可後でないと取れない
+  if (!captureFrame.started) { captureFrame.started = true; captureFrame(); }
+  requestWakeLock();
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+};
+$('camSel').onchange = e => startCam(e.target.value);
+
+// ---- 他者映像：録画またはファイル ----
+function setOther(url) {
+  vOther.src = url;
+  vOther.play();
+}
+$('file').onchange = e => { const f = e.target.files[0]; if (f) setOther(URL.createObjectURL(f)); };
+
+$('rec').onclick = () => {
+  if (!stream) return;
+  if (recorder) { recorder.stop(); return; }
+  const mime = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+  recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  chunks = [];
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.onstop = () => {
+    lastRec = new Blob(chunks, { type: recorder.mimeType });
+    setOther(URL.createObjectURL(lastRec));
+    recorder = null; $('rec').textContent = '他者を録画'; $('rec').classList.remove('on');
+  };
+  recorder.start();
+  $('rec').textContent = '録画停止'; $('rec').classList.add('on');
+};
+
+// 録画をファイルとして保存（Mac: ダウンロードフォルダ、iPhone: 「ファイル」アプリ等）
+$('save').onclick = () => {
+  if (!lastRec) { $('status').textContent = '保存する録画がありません'; return; }
+  const ext = lastRec.type.includes('mp4') ? 'mp4' : 'webm';
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(lastRec);
+  a.download = `other_hand_${stamp}.${ext}`;
+  a.click();
+};
+
+// ---- 体験の記録：表示中の映像をcanvasに描き直して録画し、切替をCSVに残す ----
+const cOut = document.createElement('canvas'), ctxOut = cOut.getContext('2d');
+let expRecorder = null, expChunks = [], expT0 = 0, expLog = [], lastShown = null;
+
+function drawOut(srcEl) {
+  const W = cOut.width, H = cOut.height;
+  ctxOut.fillStyle = '#000'; ctxOut.fillRect(0, 0, W, H);
+  const sw = srcEl.videoWidth || srcEl.width, sh = srcEl.videoHeight || srcEl.height;
+  if (sw && sh) {
+    const k = Math.max(W / sw, H / sh), z = +$('zoom').value;   // object-fit: cover と同じ計算
+    ctxOut.save();
+    ctxOut.translate(W / 2, H / 2);
+    ctxOut.rotate(rot * Math.PI / 180);
+    ctxOut.scale(flipH ? -z : z, flipV ? -z : z);
+    ctxOut.drawImage(srcEl, -sw * k / 2, -sh * k / 2, sw * k, sh * k);
+    ctxOut.restore();
+  }
+}
+
+function startExpRec() {
+  // 画面と同じ縦横比で、長辺1280 px
+  const iw = innerWidth, ih = innerHeight, L = 1280;
+  cOut.width = iw >= ih ? L : Math.round(L * iw / ih);
+  cOut.height = iw >= ih ? Math.round(L * ih / iw) : L;
+  const mime = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+  expRecorder = new MediaRecorder(cOut.captureStream(60), mime ? { mimeType: mime } : undefined);
+  expChunks = []; expLog = []; lastShown = null; expT0 = performance.now();
+  expRecorder.ondataavailable = e => expChunks.push(e.data);
+  expRecorder.onstop = saveExpRec;
+  expRecorder.start(1000);    // 1秒ごとにデータを受け取る
+  $('expRec').textContent = '記録停止'; $('expRec').classList.add('on'); $('recDot').classList.add('on');
+}
+
+function saveExpRec() {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const type = expRecorder.mimeType;
+  download(new Blob(expChunks, { type }), `session_${stamp}.${type.includes('mp4') ? 'mp4' : 'webm'}`);
+  const csv = 't_ms,shown,mode,src,period_s,self_ratio,delay_frames,flipH,flipV,rot_deg,zoom\n' +
+              expLog.map(r => r.join(',')).join('\n') + '\n';
+  download(new Blob([csv], { type: 'text/csv' }), `session_${stamp}.csv`);
+  expRecorder = null;
+  $('expRec').textContent = '体験を記録'; $('expRec').classList.remove('on'); $('recDot').classList.remove('on');
+}
+
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+}
+
+$('expRec').onclick = () => {
+  if (!stream) { $('status').textContent = '先にカメラを開始してください'; return; }
+  expRecorder ? expRecorder.stop() : startExpRec();
+};
+
+// ---- モードと設定 ----
+function setMode(m) {
+  mode = m;
+  ['mSelf', 'mOther', 'mAlt'].forEach(id => $(id).classList.remove('on'));
+  $({ self: 'mSelf', other: 'mOther', alt: 'mAlt' }[m]).classList.add('on');
+}
+$('mSelf').onclick = () => setMode('self');
+$('mOther').onclick = () => setMode('other');
+$('mAlt').onclick = () => setMode('alt');
+
+function applyView() {
+  const z = +$('zoom').value;
+  const tf = `rotate(${rot}deg) scale(${flipH ? -z : z}, ${flipV ? -z : z})`;
+  vSelf.style.transform = tf; vOther.style.transform = tf; cDelay.style.transform = tf;
+  $('dV').textContent = $('delay').value;
+  $('dMs').textContent = Math.round(+$('delay').value / camFps * 1000);
+  $('pV').textContent = (+$('period').value).toFixed(2);
+  $('rV').textContent = (+$('ratio').value).toFixed(2);
+  $('zV').textContent = z.toFixed(2);
+  $('bV').textContent = $('bpm').value;
+}
+['period', 'ratio', 'zoom', 'bpm', 'delay'].forEach(id => $(id).oninput = applyView);
+$('rot').onclick = () => { rot = (rot + 90) % 360; $('rot').textContent = `回転 ${rot}°`; applyView(); };
+$('flipH').onclick = () => { flipH = !flipH; $('flipH').classList.toggle('on', flipH); applyView(); };
+$('flipV').onclick = () => { flipV = !flipV; $('flipV').classList.toggle('on', flipV); applyView(); };
+$('src').onclick = () => {
+  src = src === 'rec' ? 'delay' : 'rec';
+  $('src').textContent = `比較対象: ${src === 'rec' ? '録画' : '遅延自己'}`;
+  $('src').classList.toggle('on', src === 'delay');
+};
+$('click').onclick = () => {
+  clickOn = !clickOn;
+  $('click').textContent = `クリック音 ${clickOn ? 'ON' : 'OFF'}`;
+  $('click').classList.toggle('on', clickOn);
+  if (audioCtx) nextBeat = audioCtx.currentTime + 0.1;
+};
+
+// UIの表示／非表示（非表示中はボタンを薄くして映像の邪魔をしない）
+function setUI(show) {
+  panel.classList.toggle('hidden', !show);
+  $('uiToggle').textContent = show ? 'UI OFF' : 'UI';
+  $('uiToggle').classList.toggle('dim', !show);
+}
+ $('helpBtn').onclick = () => $('help').classList.add('show');
+$('helpClose').onclick = () => $('help').classList.remove('show');
+$('uiToggle').onclick = () => setUI(panel.classList.contains('hidden'));
+
+// ---- クリック音（メトロノーム）----
+function scheduleClicks() {
+  if (!audioCtx || !clickOn) return;
+  const interval = 60 / +$('bpm').value;
+  while (nextBeat < audioCtx.currentTime + 0.1) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = 1000;
+    g.gain.setValueAtTime(0.3, nextBeat);
+    g.gain.exponentialRampToValueAtTime(0.001, nextBeat + 0.03);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(nextBeat); o.stop(nextBeat + 0.04);
+    nextBeat += interval;
+  }
+}
+
+// ---- 切替ループ ----
+function loop(now) {
+  const period = +$('period').value, ratio = +$('ratio').value;
+  const phase = ((now - t0) / 1000 % period) / period;
+  const showSelf = mode === 'self' || (mode === 'alt' && phase < ratio);
+  vSelf.style.visibility = showSelf ? 'visible' : 'hidden';
+  cDelay.style.visibility = (!showSelf && src === 'delay') ? 'visible' : 'hidden';
+  if (expRecorder) {
+    const shown = showSelf ? 'self' : src;               // self / rec / delay
+    drawOut(showSelf ? vSelf : (src === 'delay' ? cDelay : vOther));
+    if ($('marker').checked) {
+      ctxOut.fillStyle = showSelf ? '#fff' : '#000';
+      ctxOut.fillRect(0, 0, 24, 24);
+    }
+    if (shown !== lastShown) {                           // 切替が起きた時だけ1行記録
+      expLog.push([Math.round(now - expT0), shown, mode, src, +$('period').value, +$('ratio').value,
+                   +$('delay').value, flipH, flipV, rot, +$('zoom').value]);
+      lastShown = shown;
+    }
+  }
+  scheduleClicks();
+  requestAnimationFrame(loop);
+}
+
+// ---- 画面スリープ防止 ----
+async function requestWakeLock() {
+  try { await navigator.wakeLock?.request('screen'); } catch (e) { /* 非対応なら無視 */ }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) requestWakeLock(); });
+
+applyView();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
