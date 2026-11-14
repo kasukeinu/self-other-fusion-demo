@@ -21,10 +21,10 @@
   label { white-space: nowrap; }
   input[type=range] { flex: 1; min-width: 120px; }
   #status { color: #aaa; font-size: 12px; }
-  #uiToggle { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: 8px; z-index: 10;
-              padding: 6px 10px; border-radius: 16px; background: rgba(20,20,20,.6);
-              border: 1px solid rgba(255,255,255,.3); color: #eee; font-size: 13px; }
-  #uiToggle.dim { opacity: .25; }
+  #placeholder { position: absolute; inset: 0; display: flex; flex-direction: column;
+                 align-items: center; justify-content: center; background: #3a3a3a; color: #ddd;
+                 font: 600 40px/1.3 -apple-system, sans-serif; visibility: hidden; }
+  #placeholder small { font-size: 15px; font-weight: 400; color: #aaa; }
   #recDot { position: fixed; top: calc(14px + env(safe-area-inset-top)); right: 12px; z-index: 10;
             width: 10px; height: 10px; border-radius: 50%; background: #e33; display: none; }
   #recDot.on { display: block; }
@@ -41,12 +41,12 @@
 </head>
 <body>
 <div id="stage">
+  <div id="placeholder">Other View<small>他者映像が未設定</small></div>
   <video id="other" playsinline muted loop></video>
   <canvas id="delayed"></canvas>
   <video id="self" playsinline muted autoplay></video>
 </div>
 
-<button id="uiToggle">UI OFF</button>
 <div id="recDot"></div>
 
 <div id="help">
@@ -59,7 +59,7 @@
     <li>カメラ一覧から使うカメラを選ぶ（スマホは超広角があればそれを選ぶ）</li>
     <li><b>倍率・回転・左右反転・上下反転</b>で、映像の手が実際の手と同じ大きさ・向きになるように合わせる</li>
     <li>比較用の他者映像を用意する（下の「他者映像」を参照）</li>
-    <li>左上の<b>UI OFF</b>でパネルを隠して体験を始める。操作しないまま一定時間たつと自動でも隠れる（<b>自動で隠す</b>で時間を変更）</li>
+    <li><b>映像をタップ</b>するとパネルが隠れる／出る。操作しないまま一定時間たつと自動でも隠れる（<b>自動で隠す</b>で時間を変更）</li>
   </ol>
 
   <h3>表示モード</h3>
@@ -67,8 +67,11 @@
     <li><b>自己</b>：ライブ映像だけを表示</li>
     <li><b>他者</b>：比較対象だけを表示</li>
     <li><b>交互</b>：ライブ映像と比較対象を周期的に切り替える</li>
-    <li><b>周期</b>：1回の切替の長さ（0.25〜4 s）</li>
-    <li><b>自己比率</b>：1周期のうち自己映像を出す割合</li>
+    <li>起動時は<b>交互</b>。他者映像が未設定の間は、比較対象の時間に「Other View」と書いた画面が出る</li>
+    <li><b>周期</b>：自己と比較対象を1回ずつ出す長さ（100〜4000 ms）。−／＋で10 msずつ</li>
+    <li><b>自己比率</b>：1周期のうち自己映像を出す割合。−／＋で0.01ずつ。自己と比較対象の表示時間（ms）も表示</li>
+    <li><b>Yokosaka 2014</b>：初期値（周期400 ms、自己133 ms／他者267 ms）に戻す。Yokosaka et al. (2014) 実験1の切替条件</li>
+    <li>表示は画面の更新（60 Hzで約16.7 ms）単位で切り替わるので、msの値はその刻みに丸められる</li>
   </ul>
 
   <h3>比較対象</h3>
@@ -130,8 +133,19 @@
     <label><input type="checkbox" id="marker" checked> 映像に切替マーカーを入れる</label>
     <input type="file" id="file" accept="video/*">
   </div>
-  <div class="row"><label>周期 <span id="pV"></span> s</label><input id="period" type="range" min="0.25" max="4" step="0.05" value="1"></div>
-  <div class="row"><label>自己比率 <span id="rV"></span></label><input id="ratio" type="range" min="0.2" max="0.8" step="0.05" value="0.5"></div>
+  <div class="row">
+    <label>周期 <span id="pV"></span> ms</label>
+    <button class="step" data-t="period" data-d="-0.01">−</button>
+    <input id="period" type="range" min="0.1" max="4" step="0.01" value="0.4">
+    <button class="step" data-t="period" data-d="0.01">＋</button>
+  </div>
+  <div class="row">
+    <label>自己比率 <span id="rV"></span>（自己 <span id="sMs"></span> / 比較 <span id="oMs"></span> ms）</label>
+    <button class="step" data-t="ratio" data-d="-0.01">−</button>
+    <input id="ratio" type="range" min="0.05" max="0.95" step="0.001" value="0.333">
+    <button class="step" data-t="ratio" data-d="0.01">＋</button>
+    <button id="preset">Yokosaka 2014（133 / 267 ms）</button>
+  </div>
   <div class="row"><label>倍率 <span id="zV"></span></label><input id="zoom" type="range" min="0.5" max="3" step="0.01" value="1"></div>
   <div class="row">
     <button id="rot">回転 0°</button>
@@ -147,7 +161,7 @@
     <button id="click">クリック音 OFF</button>
     <label>テンポ <span id="bV"></span> BPM</label><input id="bpm" type="range" min="30" max="120" step="1" value="60">
   </div>
-  <div id="status">左上のボタンでパネルの表示／非表示</div>
+  <div id="status">映像をタップでパネルの表示／非表示</div>
 </div>
 
 <script>
@@ -255,6 +269,13 @@ let expRecorder = null, expChunks = [], expT0 = 0, expLog = [], lastShown = null
 function drawOut(srcEl) {
   const W = cOut.width, H = cOut.height;
   ctxOut.fillStyle = '#000'; ctxOut.fillRect(0, 0, W, H);
+  if (srcEl === vOther && !vOther.videoWidth) {          // 他者映像が未設定：Other View を描く
+    ctxOut.fillStyle = '#3a3a3a'; ctxOut.fillRect(0, 0, W, H);
+    ctxOut.fillStyle = '#ddd'; ctxOut.textAlign = 'center'; ctxOut.textBaseline = 'middle';
+    ctxOut.font = `600 ${Math.round(Math.min(W, H) / 10)}px sans-serif`;
+    ctxOut.fillText('Other View', W / 2, H / 2);
+    return;
+  }
   const sw = srcEl.videoWidth || srcEl.width, sh = srcEl.videoHeight || srcEl.height;
   if (sw && sh) {
     const k = Math.max(W / sw, H / sh), z = +$('zoom').value;   // object-fit: cover と同じ計算
@@ -318,12 +339,23 @@ function applyView() {
   vSelf.style.transform = tf; vOther.style.transform = tf; cDelay.style.transform = tf;
   $('dV').textContent = $('delay').value;
   $('dMs').textContent = Math.round(+$('delay').value / camFps * 1000);
-  $('pV').textContent = (+$('period').value).toFixed(2);
-  $('rV').textContent = (+$('ratio').value).toFixed(2);
+  const P = +$('period').value, R = +$('ratio').value;
+  $('pV').textContent = Math.round(P * 1000);
+  $('rV').textContent = R.toFixed(3);
+  $('sMs').textContent = Math.round(P * R * 1000);
+  $('oMs').textContent = Math.round(P * (1 - R) * 1000);
   $('zV').textContent = z.toFixed(2);
   $('bV').textContent = $('bpm').value;
 }
 ['period', 'ratio', 'zoom', 'bpm', 'delay'].forEach(id => $(id).oninput = applyView);
+// −/＋ボタン：周期は10 ms、比率は0.01ずつ
+document.querySelectorAll('button.step').forEach(b => b.onclick = () => {
+  const el = $(b.dataset.t);
+  const v = Math.min(+el.max, Math.max(+el.min, +el.value + +b.dataset.d));
+  el.value = v.toFixed(3); applyView();
+});
+// Yokosaka et al. (2014) 実験1の切替条件：自己133 ms・他者267 ms（周期400 ms）
+$('preset').onclick = () => { $('period').value = 0.4; $('ratio').value = 0.333; applyView(); };
 $('rot').onclick = () => { rot = (rot + 90) % 360; $('rot').textContent = `回転 ${rot}°`; applyView(); };
 $('flipH').onclick = () => { flipH = !flipH; $('flipH').classList.toggle('on', flipH); applyView(); };
 $('flipV').onclick = () => { flipV = !flipV; $('flipV').classList.toggle('on', flipV); applyView(); };
@@ -342,12 +374,11 @@ $('click').onclick = () => {
 // UIの表示／非表示（非表示中はボタンを薄くして映像の邪魔をしない）
 function setUI(show) {
   panel.classList.toggle('hidden', !show);
-  $('uiToggle').textContent = show ? 'UI OFF' : 'UI';
-  $('uiToggle').classList.toggle('dim', !show);
 }
  $('helpBtn').onclick = () => $('help').classList.add('show');
 $('helpClose').onclick = () => $('help').classList.remove('show');
-$('uiToggle').onclick = () => { setUI(panel.classList.contains('hidden')); resetHideTimer(); };
+// 映像（パネル以外）をタップするとパネルの表示／非表示を切り替える
+$('stage').addEventListener('click', () => { setUI(panel.classList.contains('hidden')); resetHideTimer(); });
 
 // 操作がなくなったら一定時間でパネルを隠す（使い方を表示中は隠さない）
 let hideTimer = null;
@@ -385,6 +416,8 @@ function loop(now) {
   const showSelf = mode === 'self' || (mode === 'alt' && phase < ratio);
   vSelf.style.visibility = showSelf ? 'visible' : 'hidden';
   cDelay.style.visibility = (!showSelf && src === 'delay') ? 'visible' : 'hidden';
+  const noOther = !vOther.videoWidth;                    // 録画・ファイルが未設定
+  $('placeholder').style.visibility = (!showSelf && src === 'rec' && noOther) ? 'visible' : 'hidden';
   if (expRecorder) {
     const shown = showSelf ? 'self' : src;               // self / rec / delay
     drawOut(showSelf ? vSelf : (src === 'delay' ? cDelay : vOther));
